@@ -136,7 +136,7 @@
 </head>
 <body data-view="write">
   <div class="toolbar">
-    <div class="brand">Screenplay <small>· Fountain v2.2</small></div>
+    <div class="brand">Screenplay <small>· Fountain v2.4</small></div>
     <select id="projectSel" title="Switch project"></select>
     <button class="btn icon" id="newProjTop" title="New project">＋</button>
     <div class="seg" id="langToggle" title="Primary language">
@@ -754,7 +754,10 @@
         var pm = line.match(/^(\s*(?:\d+[A-Za-z]?[.\)]?\s*)?)(\S+)(\s+[\s\S]*)$/);
         if (pm && rules.prefixes[normKey(pm[2])]) line = pm[1] + rules.prefixes[normKey(pm[2])] + pm[3];
         if (lineIsSlug(line)) { out.push(tidySlug(line, rules)); continue; }
-        var nextNonBlank = (i + 1 < lines.length) && lines[i + 1].trim() !== "";
+        var nextBlank = (i + 1 >= lines.length) || lines[i + 1].trim() === "";
+        // standalone transition line (ends in TO:/TIL:) -> uppercase it
+        if (nextBlank && /(?:^|\s)(?:to|til):$/i.test(t)) { out.push(line.replace(t, t.toUpperCase())); continue; }
+        var nextNonBlank = !nextBlank;
         if (nextNonBlank && rules.characters[normKey(t)]) { out.push(line.replace(t, rules.characters[normKey(t)])); continue; }
       }
       out.push(line);
@@ -851,8 +854,8 @@
   var BUILTINS = {
     prefixes: { "i.":"INT.", "e.":"EXT.", "i/e":"INT./EXT.", "e/i":"EXT./INT." },
     times: {
-      en: { "d.":"DAY", "n.":"NIGHT", "mo.":"MORNING", "ev.":"EVENING", "af.":"AFTERNOON", "co.":"CONTINUOUS", "la.":"LATER", "dn.":"DAWN", "du.":"DUSK" },
-      da: { "d.":"DAG", "n.":"NAT", "mo.":"MORGEN", "ev.":"AFTEN", "af.":"EFTERMIDDAG", "co.":"KONTINUERLIG", "la.":"SENERE", "dn.":"DAGGRY", "du.":"SKUMRING" }
+      en: { "d.":"DAY", "n.":"NIGHT", "mo.":"MORNING", "ev.":"EVENING", "af.":"AFTERNOON", "co.":"CONTINUOUS", "l.":"LATER", "ml.":"MOMENTS LATER", "dn.":"DAWN", "du.":"DUSK" },
+      da: { "d.":"DAG", "n.":"NAT", "mo.":"MORGEN", "ev.":"AFTEN", "af.":"EFTERMIDDAG", "co.":"KONTINUERLIG", "s.":"SENERE", "ls.":"LIDT SENERE", "dn.":"DAGGRY", "du.":"SKUMRING" }
     }
   };
   var LANGS = { da:"Danish", en:"English" };
