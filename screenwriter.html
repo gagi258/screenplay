@@ -136,7 +136,7 @@
 </head>
 <body data-view="write">
   <div class="toolbar">
-    <div class="brand">Screenplay <small>· Fountain</small></div>
+    <div class="brand">Screenplay <small>· Fountain v2.2</small></div>
     <select id="projectSel" title="Switch project"></select>
     <button class="btn icon" id="newProjTop" title="New project">＋</button>
     <div class="seg" id="langToggle" title="Primary language">
@@ -1261,8 +1261,13 @@
 
   // ---------- offline (service worker, only when hosted over http/https) ----------
   try {
-    if (navigator.serviceWorker && (location.protocol === "https:" || location.protocol === "http:"))
-      navigator.serviceWorker.register("sw.js").catch(function(){});
+    if (navigator.serviceWorker && (location.protocol === "https:" || location.protocol === "http:")) {
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function(){
+        if (refreshing) return; refreshing = true; location.reload();
+      });
+      navigator.serviceWorker.register("sw.js").then(function(reg){ try { reg.update(); } catch(e){} }).catch(function(){});
+    }
   } catch (e) {}
 
   // ---------- init ----------
