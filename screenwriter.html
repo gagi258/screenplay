@@ -37,7 +37,7 @@
   button.btn:hover,label.btn:hover{background:#f0f0f2}
   button.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
   button.icon{padding:6px 9px}
-  select#projectSel{font:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; max-width:150px}
+  select#projectSel,select#elementType{font:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; max-width:150px; background:#fafafa; color:var(--ink)}
   .chk{display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); white-space:nowrap}
   .seg{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}
   .seg button{font:inherit; font-size:13px; border:0; background:#fafafa; padding:6px 11px; cursor:pointer}
@@ -136,7 +136,7 @@
 </head>
 <body data-view="write">
   <div class="toolbar">
-    <div class="brand">Screenplay <small>· Fountain v2.4</small></div>
+    <div class="brand">Screenplay <small>· Fountain v2.5</small></div>
     <select id="projectSel" title="Switch project"></select>
     <button class="btn icon" id="newProjTop" title="New project">＋</button>
     <div class="seg" id="langToggle" title="Primary language">
@@ -150,6 +150,17 @@
     <label class="chk" title="Forgiving detection of scene headings & cues"><input type="checkbox" id="autodetect" checked> Auto-detect</label>
     <label class="chk" title="Expand shortcuts as you type"><input type="checkbox" id="autotype" checked> Auto-type</label>
     <label class="chk" title="Number scenes in the output"><input type="checkbox" id="sceneNum"> Scene #</label>
+    <select id="elementType" title="Force the format of the current line(s)">
+      <option value="">Format as…</option>
+      <option value="scene">Scene heading</option>
+      <option value="action">Action</option>
+      <option value="character">Character</option>
+      <option value="parenthetical">Parenthetical</option>
+      <option value="transition">Transition</option>
+      <option value="centered">Centered</option>
+      <option value="lyric">Lyric</option>
+      <option value="auto">Auto (clear)</option>
+    </select>
     <span class="status" id="status">Ready</span>
     <div class="spacer hide-mobile"></div>
     <label class="btn">Open<input type="file" id="file" accept=".fountain,.txt,.md,.spmd,text/plain" hidden></label>
@@ -627,6 +638,12 @@
     }
     return s;
   }
+  // Split a character cue into its name and a trailing extension like " (V.O.)".
+  function splitCue(s) {
+    var m = s.match(/^([\s\S]*?)\s*(\([^)]*\))\s*$/);
+    if (m && m[1].trim()) return { name: m[1].trim(), ext: " " + m[2] };
+    return { name: s.trim(), ext: "" };
+  }
   function inDialogue(v, lineStart) {
     var fs = blockFirstStart(v, lineStart);
     if (fs === lineStart) return false;
@@ -671,8 +688,16 @@
     var dial = inDialogue(v, lineStart);
     var key = normKey(word);
 
-    if (atStart && !dial && prevLineBlank(v, lineStart) && pre.trim() === word && rules.characters[key])
-      return out(v, wordStart, spaceIdx, rules.characters[key], pos);
+    if (!dial && prevLineBlank(v, lineStart)) {
+      var leadS = pre.length - pre.replace(/^\s+/, "").length;
+      var preT = pre.slice(leadS);
+      var cueS = splitCue(preT);
+      var ckS = normKey(cueS.name);
+      // expand only when the whole cue-so-far is the shortcut (optionally with a (V.O.)-style ext)
+      if (rules.characters[ckS] && (cueS.name + cueS.ext).replace(/\s+/g, " ").trim() === preT.replace(/\s+/g, " ").trim()) {
+        return out(v, lineStart + leadS, spaceIdx, rules.characters[ckS] + cueS.ext, pos);
+      }
+    }
     if (!dial && atStart && rules.prefixes[key])
       return out(v, wordStart, spaceIdx, rules.prefixes[key], pos);
     if (lineIsSlug(pre) && rules.times[key])
@@ -714,10 +739,11 @@
       var loc = matchLocation(lineText, prevStart, rules.locations);
       if (loc) return out(v, loc.start, loc.end, loc.repl, pos);
     } else if (prevLineBlank(v, prevStart)) {
-      var trimmed = lineText.trim(), ck = normKey(trimmed);
+      var cue = splitCue(lineText.trim());
+      var ck = normKey(cue.name);
       if (rules.characters[ck]) {
         var lead = lineText.length - lineText.replace(/^\s+/, "").length;
-        return out(v, prevStart + lead, prevStart + lineText.replace(/\s+$/, "").length, rules.characters[ck], pos);
+        return out(v, prevStart + lead, prevStart + lineText.replace(/\s+$/, "").length, rules.characters[ck] + cue.ext, pos);
       }
     }
     return null;
@@ -758,14 +784,41 @@
         // standalone transition line (ends in TO:/TIL:) -> uppercase it
         if (nextBlank && /(?:^|\s)(?:to|til):$/i.test(t)) { out.push(line.replace(t, t.toUpperCase())); continue; }
         var nextNonBlank = !nextBlank;
-        if (nextNonBlank && rules.characters[normKey(t)]) { out.push(line.replace(t, rules.characters[normKey(t)])); continue; }
+        if (nextNonBlank) {
+          var cueT = splitCue(t);
+          var ckT = normKey(cueT.name);
+          if (rules.characters[ckT]) { out.push(line.replace(t, rules.characters[ckT] + cueT.ext)); continue; }
+        }
       }
       out.push(line);
     }
     return out.join("\n").replace(/\n{3,}/g, "\n\n");
   }
 
-  var api = { parseRules: parseRules, compileRules: compileRules, compute: compute, lineIsSlug: lineIsSlug, tidy: tidy };
+  // Force the Fountain element type of the selected line(s) by (re)setting the force char.
+  function setElementType(v, selS, selE, type) {
+    var lineStart = v.lastIndexOf("\n", selS - 1) + 1;
+    var lineEnd = v.indexOf("\n", selE); if (lineEnd === -1) lineEnd = v.length;
+    var seg = v.slice(lineStart, lineEnd);
+    var outSeg = seg.split("\n").map(function (ln) {
+      var t = ln.trim();
+      if (!t) return ln;
+      var core = t.replace(/^([.!@~>])\s?/, "").replace(/\s*<\s*$/, "");  // strip existing forcing
+      switch (type) {
+        case "scene": return "." + core;
+        case "action": return "!" + core;
+        case "character": return "@" + core;
+        case "transition": return "> " + core;
+        case "lyric": return "~" + core;
+        case "centered": return "> " + core + " <";
+        case "parenthetical": return /^\(.*\)$/.test(core) ? core : "(" + core + ")";
+        default: return core;  // "auto" — clear forcing
+      }
+    }).join("\n");
+    return { value: v.slice(0, lineStart) + outSeg + v.slice(lineEnd), start: lineStart, end: lineStart + outSeg.length };
+  }
+
+  var api = { parseRules: parseRules, compileRules: compileRules, compute: compute, lineIsSlug: lineIsSlug, tidy: tidy, setElementType: setElementType };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ExpandCore = api;
 })(typeof window !== "undefined" ? window : globalThis);
@@ -1146,6 +1199,15 @@
   });
 
   autoChk.addEventListener("change", render);
+  // force element type of the current line(s)
+  $("elementType").addEventListener("change", function(){
+    var type = this.value; if(!type) return;
+    var r = EC.setElementType(ta.value, ta.selectionStart, ta.selectionEnd, type);
+    ta.value = r.value; ta.selectionStart = r.start; ta.selectionEnd = r.end;
+    this.value = "";
+    onInput();
+    try{ ta.focus(); }catch(e){}
+  });
   window.addEventListener("resize", fit);
   window.addEventListener("orientationchange", function(){ setTimeout(fit, 200); });
 
