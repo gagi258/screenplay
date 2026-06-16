@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Screenplay — Fountain formatter</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2e6df6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Screenplay">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  :root{
+    --bg:#f3f3f4; --panel:#ffffff; --ink:#1c1c1e; --muted:#6b6b70;
+    --line:#dcdce0; --accent:#2e6df6; --accent-ink:#fff; --amber:#fff3cd; --amber-line:#c79100;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); height:100dvh; display:flex; flex-direction:column;
+    -webkit-text-size-adjust:100%;
+  }
+  .toolbar{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:10;
+  }
+  .brand{font-weight:700; font-size:15px; white-space:nowrap}
+  .brand small{font-weight:500; color:var(--muted)}
+  .spacer{flex:1 1 auto}
+  button.btn, label.btn{
+    font:inherit; font-size:13px; border:1px solid var(--line); background:#fafafa; color:var(--ink);
+    padding:6px 11px; border-radius:8px; cursor:pointer; white-space:nowrap; user-select:none;
+  }
+  button.btn:hover,label.btn:hover{background:#f0f0f2}
+  button.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+  button.icon{padding:6px 9px}
+  select#projectSel{font:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; max-width:150px}
+  .chk{display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); white-space:nowrap}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+  .seg button{font:inherit; font-size:13px; border:0; background:#fafafa; padding:6px 11px; cursor:pointer}
+  .seg button.on{background:var(--accent); color:#fff}
+  .status{font-size:12px; color:var(--muted); white-space:nowrap}
+  .status.warn{color:var(--amber-line)}
+  .exportwrap{position:relative; display:inline-block}
+  .menu{position:absolute; right:0; top:calc(100% + 4px); background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.16); display:none; flex-direction:column; min-width:160px; z-index:30; overflow:hidden}
+  .menu.open{display:flex}
+  .menu button{border:0; background:none; text-align:left; padding:9px 13px; font:inherit; font-size:13px; cursor:pointer}
+  .menu button:hover{background:#f0f0f2}
+  .workspace{flex:1 1 auto; display:flex; min-height:0}
+  .pane{min-height:0; height:100%; overflow:auto}
+  .pane.editor{flex:1 1 46%; border-right:1px solid var(--line); background:var(--panel)}
+  .pane.preview{flex:1 1 54%; background:var(--bg)}
+  #src{
+    width:100%; height:100%; border:0; outline:0; resize:none; padding:16px;
+    font:13px/1.55 "Courier Prime","Courier New",ui-monospace,monospace; color:var(--ink); background:transparent;
+    white-space:pre-wrap; tab-size:4;
+  }
+  .preview-scroll{padding:18px 12px 60px; overflow:auto; height:100%}
+  #pages{transform-origin:top center}
+  .empty{color:var(--muted); font-style:italic; text-align:center; padding:40px 10px}
+  /* ---------- screenplay page ---------- */
+  .page{
+    width:8.5in; min-height:11in; background:#fff; color:#000;
+    padding:1in 1in 1in 1.5in; margin:0 auto; box-shadow:0 1px 6px rgba(0,0,0,.18);
+    font:12pt/1 "Courier Prime","Courier New",Courier,monospace;
+  }
+  .page .el,.page .speech,.page .dual{white-space:pre-wrap; overflow-wrap:break-word}
+  .page > *:first-child,.page .titlepage + *{margin-top:0}
+  .scene{margin:1.6em 0 0; text-transform:uppercase; position:relative}
+  .snum{position:absolute; top:0; font-size:12pt}
+  .snum-l{left:-0.6in}
+  .snum-r{right:0}
+  .action{margin:1em 0 0}
+  .character{margin:1em 0 0 2.2in}
+  .parenthetical{margin:0 0 0 1.6in; max-width:2in}
+  .dialogue{margin:0 0 0 1in; max-width:3.5in}
+  .lyric{margin:1em 0 0 1in; font-style:italic}
+  .transition{margin:1em 0 0; text-align:right; text-transform:uppercase}
+  .centered{margin:1em 0 0; text-align:center}
+  .speech{break-inside:avoid; margin-top:1em}
+  .speech > *:first-child{margin-top:0}
+  .dual{display:flex; gap:.25in; margin:1em 0 0}
+  .dual-col{flex:1 1 50%}
+  .dual-col .character{margin:0 0 0 .4in}
+  .dual-col .dialogue,.dual-col .parenthetical{margin-left:0; max-width:none}
+  .pagebreak{break-after:page}
+  .titlepage{min-height:8.5in; display:flex; flex-direction:column; justify-content:center; text-align:center}
+  .tp-title{text-transform:uppercase; text-decoration:underline; margin-bottom:1.5em}
+  .tp-credit{margin-bottom:.4em}
+  .tp-foot{margin-top:auto; text-align:left; font-size:11pt}
+  .character.guessed{background:var(--amber); outline:1px dotted var(--amber-line); outline-offset:1px}
+  /* ---------- overlays ---------- */
+  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.42); display:none; align-items:center; justify-content:center; z-index:50; padding:16px}
+  .overlay.open{display:flex}
+  .modal{background:var(--panel); border-radius:14px; width:min(700px,100%); max-height:90dvh; overflow:auto; padding:18px 20px; box-shadow:0 14px 44px rgba(0,0,0,.3)}
+  .modal h2{margin:.1em 0; font-size:17px}
+  .modal h3{margin:1.2em 0 .35em; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em}
+  .modal .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .modal input[type=text]{font:inherit; padding:7px 10px; border:1px solid var(--line); border-radius:8px; flex:1 1 auto; min-width:140px}
+  .sc-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  @media (max-width:560px){ .sc-grid{grid-template-columns:1fr} }
+  .sc-grid label{font-size:12px; font-weight:600; display:block; margin-bottom:4px}
+  .sc-grid .ex{font-weight:400; color:var(--muted)}
+  .sc-grid textarea{width:100%; height:86px; font:12px/1.5 "Courier New",monospace; padding:8px; border:1px solid var(--line); border-radius:8px; resize:vertical}
+  .hint{font-size:12px; color:var(--muted); margin:8px 0 0; line-height:1.5}
+  #builtinsView{font:12px/1.6 "Courier New",monospace; background:#f7f7f8; border:1px solid var(--line); border-radius:8px; padding:10px; color:var(--ink)}
+  .modal .foot{display:flex; justify-content:flex-end; gap:8px; margin-top:18px}
+  .cheat dt{font-weight:700; margin-top:11px}
+  .cheat dd{margin:2px 0 0; color:var(--ink)}
+  .cheat code{background:#f0f0f2; padding:1px 5px; border-radius:5px; font-size:12.5px}
+  .seg.viewtoggle{display:none}
+  @media (max-width:860px){
+    .seg.viewtoggle{display:inline-flex}
+    .workspace{display:block}
+    .pane{display:none; height:100%}
+    body[data-view="write"] .pane.editor{display:block; height:100%}
+    body[data-view="preview"] .pane.preview{display:block; height:100%}
+    .hide-mobile{display:none}
+  }
+  @media print{
+    .toolbar,.pane.editor,.overlay{display:none !important}
+    body{background:#fff; display:block; height:auto}
+    .workspace{display:block}
+    .pane.preview{display:block; overflow:visible; height:auto}
+    .preview-scroll{padding:0; overflow:visible; height:auto}
+    #pages{zoom:1 !important; transform:none !important}
+    .page{width:auto; min-height:auto; padding:0; margin:0; box-shadow:none}
+    .character.guessed{background:none !important; outline:0 !important}
+    @page{size:Letter; margin:1in 1in 1in 1.5in}
+  }
+</style>
+</head>
+<body data-view="write">
+  <div class="toolbar">
+    <div class="brand">Screenplay <small>· Fountain</small></div>
+    <select id="projectSel" title="Switch project"></select>
+    <button class="btn icon" id="newProjTop" title="New project">＋</button>
+    <div class="seg" id="langToggle" title="Primary language">
+      <button data-lang="da">DA</button><button data-lang="en">EN</button>
+    </div>
+    <button class="btn" id="settingsBtn" title="Projects & shortcuts">⚙︎ Shortcuts</button>
+    <button class="btn icon" id="guideBtn" title="Fountain cheat sheet">?</button>
+    <div class="seg viewtoggle" id="viewToggle">
+      <button data-view="write" class="on">Write</button><button data-view="preview">Preview</button>
+    </div>
+    <label class="chk" title="Forgiving detection of scene headings & cues"><input type="checkbox" id="autodetect" checked> Auto-detect</label>
+    <label class="chk" title="Expand shortcuts as you type"><input type="checkbox" id="autotype" checked> Auto-type</label>
+    <label class="chk" title="Number scenes in the output"><input type="checkbox" id="sceneNum"> Scene #</label>
+    <span class="status" id="status">Ready</span>
+    <div class="spacer hide-mobile"></div>
+    <label class="btn">Open<input type="file" id="file" accept=".fountain,.txt,.md,.spmd,text/plain" hidden></label>
+    <button class="btn" id="sampleBtn">Sample</button>
+    <button class="btn" id="tidyBtn" title="Expand shortcuts & standardise sluglines — great after pasting">Tidy</button>
+    <div class="exportwrap">
+      <button class="btn" id="exportBtn">Export ▾</button>
+      <div class="menu" id="exportMenu">
+        <button id="expFountain">Fountain (.fountain)</button>
+        <button id="expFdx">Final Draft (.fdx)</button>
+        <button id="expTxt">Formatted text (.txt)</button>
+      </div>
+    </div>
+    <button class="btn primary" id="printBtn">Save PDF</button>
+  </div>
+
+  <div class="workspace">
+    <div class="pane editor">
+      <textarea id="src" spellcheck="false" placeholder="Paste or type your script in Fountain here…"></textarea>
+    </div>
+    <div class="pane preview">
+      <div class="preview-scroll"><div id="pages"><div class="page" id="page"></div></div></div>
+    </div>
+  </div>
+
+  <!-- settings / shortcuts modal -->
+  <div class="overlay" id="overlay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>Project &amp; shortcuts</h2>
+      <h3>Sync across devices (Dropbox)</h3>
+      <div class="row">
+        <input type="text" id="dbxKey" placeholder="Dropbox app key" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn primary" id="dbxConnect">Connect</button>
+        <button class="btn" id="dbxSync">Sync now</button>
+        <button class="btn" id="dbxDisconnect">Disconnect</button>
+      </div>
+      <div class="hint" id="dbxStatus">Not connected.</div>
+      <h3>Project</h3>
+      <div class="row">
+        <input type="text" id="projName" placeholder="Project name">
+        <button class="btn" id="newProj">New</button>
+        <button class="btn" id="delProj">Delete</button>
+      </div>
+      <h3>Built-in shortcuts — every project (localized to primary language)</h3>
+      <div id="builtinsView"></div>
+      <h3>Project shortcuts — this project only</h3>
+      <div class="sc-grid">
+        <div><label>Characters <span class="ex">fr = FREJA</span></label><textarea id="sc-characters" spellcheck="false"></textarea></div>
+        <div><label>Scene prefixes <span class="ex">adds to built-ins</span></label><textarea id="sc-prefixes" spellcheck="false"></textarea></div>
+        <div><label>Time of day <span class="ex">adds to built-ins</span></label><textarea id="sc-times" spellcheck="false"></textarea></div>
+        <div><label>Locations <span class="ex">kø = KØKKENET</span></label><textarea id="sc-locations" spellcheck="false"></textarea></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="pasteShortcuts">Paste shortcuts…</button>
+        <button class="btn" id="importShortcuts">Import file…</button>
+        <button class="btn" id="exportShortcuts">Export</button>
+        <input type="file" id="shortcutsFile" accept=".txt,.json,text/plain" hidden>
+        <span class="status" id="importStatus"></span>
+      </div>
+      <div id="pastePanel" style="display:none; margin-top:10px">
+        <textarea id="pasteBox" spellcheck="false" placeholder="Paste shortcut lines here, e.g.  f's stue = FREJAS HUS, STUE" style="width:100%; height:150px; font:12px/1.5 'Courier New',monospace; padding:8px; border:1px solid var(--line); border-radius:8px"></textarea>
+        <div class="row" style="margin-top:6px">
+          <button class="btn primary" id="pasteLoad">Load into project</button>
+          <button class="btn" id="pasteCancel">Cancel</button>
+          <span class="hint" style="margin:0">Lines go to Locations unless prefixed with a header like <code>[characters]</code>.</span>
+        </div>
+      </div>
+      <p class="hint">
+        One rule per line: <code>abbreviation = REPLACEMENT</code>. Lines starting with <code>#</code> are comments.
+        Project rules override built-ins. <b>Characters</b> expand on a cue line; <b>prefixes</b> at line start;
+        <b>time</b> &amp; <b>locations</b> only inside a slugline. Nothing expands inside dialogue. Expansion fires on space or return.
+      </p>
+      <div class="foot"><button class="btn primary" id="closeModal">Done</button></div>
+    </div>
+  </div>
+
+  <!-- cheat sheet -->
+  <div class="overlay" id="helpOverlay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>Fountain cheat sheet</h2>
+      <dl class="cheat">
+        <dt>Scene heading</dt><dd>Start a line with <code>INT.</code> / <code>EXT.</code> (works in Danish too). Or force any line with a leading dot: <code>.A STRANGE PLACE</code>. Leading scene numbers like <code>1.</code> are fine.</dd>
+        <dt>Action</dt><dd>Just write normally. Any paragraph that isn't another element is action.</dd>
+        <dt>Character</dt><dd>A name in CAPS on its own line, with a blank line above. Force with <code>@</code>: <code>@McKenzie</code>.</dd>
+        <dt>Dialogue</dt><dd>Lines directly under a character. <dt>Parenthetical</dt><dd>A line in (parentheses) under the character.</dd>
+        <dt>Dual dialogue</dt><dd>Add <code>^</code> after the second character's name to place two speeches side by side.</dd>
+        <dt>Transition</dt><dd>An ALL-CAPS line ending in <code>TO:</code>, or force with <code>&gt;</code>. Centered text: <code>&gt;THE END&lt;</code>.</dd>
+        <dt>Emphasis</dt><dd><code>*italics*</code>, <code>**bold**</code>, <code>***bold italics***</code>, <code>_underline_</code>.</dd>
+        <dt>Title page</dt><dd>At the very top: <code>Title:</code>, <code>Credit:</code>, <code>Author:</code>, <code>Draft date:</code> — then a blank line.</dd>
+        <dt>Other</dt><dd><code>===</code> forces a page break. <code># Section</code> and <code>= synopsis</code> and <code>[[notes]]</code> are for you only and never print.</dd>
+        <dt>Danish &amp; bilingual</dt><dd>æ/ø/å are fully supported. Type <code>i.</code>/<code>e.</code> for INT./EXT. and <code>d.</code>/<code>n.</code> for the day/night word in your primary language — these are built in to every project. Add your own under ⚙︎ Shortcuts.</dd>
+      </dl>
+      <div class="foot"><button class="btn primary" id="closeHelp">Close</button></div>
+    </div>
+  </div>
+
+<script id="core">
+/* fountain-core.js — forgiving Fountain parser + screenplay renderer.
+   Unicode-aware (Danish æ ø å, accented Latin, mixed-language dialogue).
+   No DOM dependencies; safe to run in Node for testing and to inline in the app. */
+(function (root) {
+  "use strict";
+
+  // ---- Unicode helpers ----
+  function hasLower(s) { return /\p{Ll}/u.test(s); }
+  function hasUpper(s) { return /\p{Lu}/u.test(s); }
+  // "All caps" = contains at least one letter, and no lowercase letter anywhere.
+  function isAllCaps(s) { return hasUpper(s) && !hasLower(s); }
+  function up(s) { return s.toUpperCase(); }
+
+  // Leading scene number like "1.", "12)", "1A", "A1." (US shooting scripts & Danish manuscripts)
+  var SCENE_NUM = /^\s*(\d+[A-Za-z]?|[A-Za-z]\d+)[\.\)]?\s+/;
+  // Default scene-heading prefixes (English + common; Danish uses INT/EXT too).
+  var DEFAULT_SCENE_PREFIXES = ["INT", "EXT", "EST", "INT/EXT", "INT./EXT", "EXT/INT", "I/E", "E/I"];
+
+  function buildScenePrefixRe(prefixes) {
+    var alts = prefixes.map(function (p) {
+      return p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    });
+    // Prefix must be followed by ".", "/", " " or end (e.g. "INT.", "INT ", "I/E").
+    return new RegExp("^(" + alts.join("|") + ")(\\.|\\b)", "i");
+  }
+
+  var TITLE_KEYS = {
+    title: 1, credit: 1, author: 1, authors: 1, source: 1, "draft date": 1,
+    date: 1, contact: 1, copyright: 1, notes: 1, revision: 1, "based on": 1
+  };
+
+  function makeCharacter(s, keepCase) {
+    s = s.trim();
+    var dual = false;
+    if (/\^\s*$/.test(s)) { dual = true; s = s.replace(/\^\s*$/, "").trim(); }
+    return { type: "character", text: keepCase ? s : up(s), dual: dual };
+  }
+
+  function parseFountain(src, opts) {
+    opts = Object.assign({ autodetect: true, scenePrefixes: DEFAULT_SCENE_PREFIXES }, opts || {});
+    var SCENE_RE = buildScenePrefixRe(opts.scenePrefixes);
+
+    src = String(src).replace(/\r\n?/g, "\n");
+    src = src.replace(/\/\*[\s\S]*?\*\//g, ""); // boneyard
+
+    var lines = src.split("\n");
+
+    // ---- Title page ----
+    var title = null;
+    var start = 0;
+    while (start < lines.length && lines[start].trim() === "") start++;
+    var keyRe = /^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/;
+    var firstKey = lines[start] && lines[start].match(keyRe);
+    if (firstKey && TITLE_KEYS[firstKey[1].trim().toLowerCase()]) {
+      title = {};
+      var curKey = null;
+      var i = start;
+      for (; i < lines.length && lines[i].trim() !== ""; i++) {
+        var m = lines[i].match(keyRe);
+        if (m && !/^\s/.test(lines[i]) && TITLE_KEYS[m[1].trim().toLowerCase()]) {
+          curKey = m[1].trim().toLowerCase();
+          title[curKey] = m[2].trim() ? [m[2].trim()] : [];
+        } else if (curKey) {
+          title[curKey].push(lines[i].trim());
+        }
+      }
+      while (i < lines.length && lines[i].trim() === "") i++;
+      lines = lines.slice(i);
+    }
+
+    function blankAt(j) { return j < 0 || j >= lines.length || lines[j].trim() === ""; }
+
+    var tokens = [];
+    for (var k = 0; k < lines.length; k++) {
+      var line = lines[k].replace(/\s+$/, "");
+      var t = line.trim();
+
+      if (t === "") { tokens.push({ type: "blank" }); continue; }
+
+      // Page break: 3+ equals signs
+      if (/^={3,}$/.test(t)) { tokens.push({ type: "pagebreak" }); continue; }
+      // Section (#) and synopsis (=) — outline only, not printed
+      if (/^#+/.test(t)) { tokens.push({ type: "section", text: t.replace(/^#+\s?/, "") }); continue; }
+      if (/^=(?!=)/.test(t)) { tokens.push({ type: "synopsis", text: t.replace(/^=\s?/, "") }); continue; }
+
+      // Forced markers
+      var c0 = t.charAt(0);
+      if (c0 === "!") { tokens.push({ type: "action", text: t.slice(1) }); continue; }
+      if (c0 === "@") { tokens.push(makeCharacter(t.slice(1), true)); continue; }
+      if (c0 === "~") { tokens.push({ type: "lyric", text: t.slice(1) }); continue; }
+      if (t.slice(0, 2) === "..") { tokens.push({ type: "action", text: t.slice(1) }); continue; } // escaped dot
+      if (c0 === "." && t.charAt(1) !== ".") { tokens.push({ type: "scene", text: up(t.slice(1).trim()) }); continue; }
+      if (/^>.*<$/.test(t)) { tokens.push({ type: "centered", text: t.replace(/^>\s?/, "").replace(/\s?<$/, "") }); continue; }
+      if (c0 === ">") { tokens.push({ type: "transition", text: up(t.slice(1).trim()) }); continue; }
+
+      // Auto scene heading (strip optional leading scene number first)
+      var noNum = t.replace(SCENE_NUM, "");
+      if (SCENE_RE.test(noNum) && blankAt(k - 1)) {
+        tokens.push({ type: "scene", text: up(t) }); continue;
+      }
+
+      // Auto transition: ALL CAPS line ending in "TO:" surrounded by blanks
+      if (blankAt(k - 1) && blankAt(k + 1) && isAllCaps(t) && /TO:$/.test(t)) {
+        tokens.push({ type: "transition", text: t }); continue;
+      }
+      if (blankAt(k - 1) && blankAt(k + 1) &&
+        /^(FADE OUT\.?|FADE TO BLACK\.?|CUT TO BLACK\.?|SMASH CUT TO:?|UDTONING\.?|KLIP TIL:?)$/i.test(t)) {
+        tokens.push({ type: "transition", text: up(t) }); continue;
+      }
+
+      // Character cue: blank above, content below (the dialogue)
+      if (blankAt(k - 1) && !blankAt(k + 1)) {
+        var nameCore = t.replace(/\(.*?\)\s*$/, "").replace(/\^\s*$/, "").trim();
+        var nameOk = nameCore.length > 0 && nameCore.length <= 38 &&
+          /^[\p{L}\p{N}]/u.test(nameCore) && !/[.!?,;:]$/.test(nameCore) &&
+          nameCore.split(/\s+/).length <= 5;
+        if (nameOk && isAllCaps(nameCore)) {
+          tokens.push(makeCharacter(t)); continue;
+        }
+        if (opts.autodetect && nameOk && !/[.!?]$/.test(nameCore) &&
+          nameCore.split(/\s+/).length <= 4) {
+          var ch = makeCharacter(t);
+          ch.guessed = true;
+          tokens.push(ch); continue;
+        }
+      }
+
+      // Dialogue / parenthetical — only if directly continuing a speech (no blank line break)
+      var prev = tokens[tokens.length - 1];
+      if (prev && (prev.type === "character" || prev.type === "dialogue" || prev.type === "parenthetical")) {
+        if (/^\(.*\)$/.test(t)) { tokens.push({ type: "parenthetical", text: t }); continue; }
+        tokens.push({ type: "dialogue", text: t }); continue;
+      }
+
+      // Default
+      tokens.push({ type: "action", text: t });
+    }
+
+    return { title: title, tokens: tokens };
+  }
+
+  // ---- Inline formatting (HTML) ----
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function inline(s) {
+    s = s.replace(/\[\[[\s\S]*?\]\]/g, ""); // notes
+    s = esc(s);
+    s = s.replace(/\\\*/g, "&#42;");
+    s = s.replace(/\*\*\*([^*]+?)\*\*\*/g, "<strong><em>$1</em></strong>");
+    s = s.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/\*([^*]+?)\*/g, "<em>$1</em>");
+    s = s.replace(/_([^_]+?)_/g, "<u>$1</u>");
+    return s;
+  }
+
+  function elHTML(tok) {
+    switch (tok.type) {
+      case "scene": return '<div class="el scene">' + inline(tok.text) + "</div>";
+      case "action": return '<div class="el action">' + inline(tok.text) + "</div>";
+      case "transition": return '<div class="el transition">' + inline(tok.text) + "</div>";
+      case "centered": return '<div class="el centered">' + inline(tok.text) + "</div>";
+      case "lyric": return '<div class="el lyric">' + inline(tok.text) + "</div>";
+      case "parenthetical": return '<div class="el parenthetical">' + inline(tok.text) + "</div>";
+      case "dialogue": return '<div class="el dialogue">' + inline(tok.text) + "</div>";
+      case "character": return '<div class="el character' + (tok.guessed ? " guessed" : "") + '">' + inline(tok.text) + "</div>";
+      case "pagebreak": return '<div class="pagebreak"></div>';
+      default: return "";
+    }
+  }
+
+  function speechHTML(sp) {
+    var h = elHTML(sp.character);
+    for (var i = 0; i < sp.lines.length; i++) h += elHTML(sp.lines[i]);
+    return h;
+  }
+
+  function renderHTML(parsed, opts) {
+    opts = opts || {};
+    var sceneNo = 0;
+    var tokens = parsed.tokens;
+    // Group character + following dialogue/parenthetical into speech blocks
+    var els = [];
+    for (var k = 0; k < tokens.length; k++) {
+      var tk = tokens[k];
+      if (tk.type === "blank" || tk.type === "section" || tk.type === "synopsis") continue;
+      if (tk.type === "character") {
+        var sp = { type: "speech", character: tk, lines: [], dual: tk.dual };
+        var j = k + 1;
+        while (j < tokens.length && (tokens[j].type === "dialogue" || tokens[j].type === "parenthetical")) {
+          sp.lines.push(tokens[j]); j++;
+        }
+        els.push(sp); k = j - 1; continue;
+      }
+      els.push(tk);
+    }
+    // Mark dual pairs (a ^-cue pairs with the previous speech)
+    for (var e = 1; e < els.length; e++) {
+      if (els[e].type === "speech" && els[e].dual && els[e - 1].type === "speech") {
+        els[e - 1].pairRight = els[e];
+        els[e].paired = true;
+      }
+    }
+    var html = [];
+    for (var x = 0; x < els.length; x++) {
+      var el = els[x];
+      if (el.type === "speech") {
+        if (el.paired) continue;
+        if (el.pairRight) {
+          html.push('<div class="dual"><div class="dual-col">' + speechHTML(el) +
+            '</div><div class="dual-col">' + speechHTML(el.pairRight) + "</div></div>");
+        } else {
+          html.push('<div class="speech">' + speechHTML(el) + "</div>");
+        }
+      } else if (el.type === "scene" && opts.sceneNumbers) {
+        sceneNo++;
+        html.push('<div class="el scene"><span class="snum snum-l">' + sceneNo + "</span>" +
+          inline(el.text) + '<span class="snum snum-r">' + sceneNo + "</span></div>");
+      } else {
+        html.push(elHTML(el));
+      }
+    }
+    return html.join("\n");
+  }
+
+  // ---- Exports (Final Draft .fdx and plain monospaced text) ----
+  function xmlEsc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  }
+  function stripMarks(s) {
+    return String(s).replace(/\[\[[\s\S]*?\]\]/g, "").replace(/\*{1,3}/g, "").replace(/_/g, "");
+  }
+  function toFDX(parsed) {
+    var typeMap = {
+      scene: "Scene Heading", action: "Action", character: "Character",
+      parenthetical: "Parenthetical", dialogue: "Dialogue", transition: "Transition",
+      centered: "General", lyric: "Action"
+    };
+    var out = ['<?xml version="1.0" encoding="UTF-8" standalone="no"?>',
+      '<FinalDraft DocumentType="Script" Template="No" Version="1">', "<Content>"];
+    parsed.tokens.forEach(function (t) {
+      var ty = typeMap[t.type]; if (!ty) return;
+      var attr = t.type === "centered" ? ' Alignment="Center"' : "";
+      out.push('<Paragraph Type="' + ty + '"' + attr + "><Text>" + xmlEsc(stripMarks(t.text || "")) + "</Text></Paragraph>");
+    });
+    out.push("</Content>");
+    if (parsed.title) {
+      out.push("<TitlePage><Content>");
+      ["title", "credit", "author", "authors", "source", "draft date", "contact"].forEach(function (k) {
+        if (parsed.title[k]) parsed.title[k].forEach(function (line) {
+          out.push("<Paragraph><Text>" + xmlEsc(line) + "</Text></Paragraph>");
+        });
+      });
+      out.push("</Content></TitlePage>");
+    }
+    out.push("</FinalDraft>");
+    return out.join("\n");
+  }
+  function pad(n) { return n > 0 ? new Array(n + 1).join(" ") : ""; }
+  function wrap(s, w) {
+    s = String(s).replace(/\s+/g, " ").trim();
+    if (!s) return [""];
+    var words = s.split(" "), lines = [], cur = "";
+    words.forEach(function (word) {
+      if ((cur + " " + word).trim().length > w) { if (cur) lines.push(cur); cur = word; }
+      else cur = (cur ? cur + " " : "") + word;
+    });
+    if (cur) lines.push(cur);
+    return lines;
+  }
+  function toPlainText(parsed) {
+    var L = [];
+    function indentBlock(s, ind, w) { return wrap(s, w).map(function (l) { return pad(ind) + l; }).join("\n"); }
+    if (parsed.title) {
+      var t = parsed.title, W = 60;
+      function center(str) { str = str || ""; return pad(Math.max(0, Math.floor((W - str.length) / 2))) + str; }
+      if (t.title) L.push("", "", "", center(t.title.join(" ").toUpperCase()));
+      if (t.credit) L.push("", center(t.credit.join(" ")));
+      if (t.author || t.authors) L.push(center((t.author || t.authors).join(" ")));
+      L.push("", "", "", "");
+    }
+    parsed.tokens.forEach(function (tk) {
+      var txt = stripMarks(tk.text || "");
+      switch (tk.type) {
+        case "scene": L.push("", txt.toUpperCase()); break;
+        case "action": L.push("", indentBlock(txt, 0, 60)); break;
+        case "character": L.push("", pad(22) + txt); break;
+        case "parenthetical": L.push(indentBlock(txt, 16, 28)); break;
+        case "dialogue": L.push(indentBlock(txt, 10, 35)); break;
+        case "lyric": L.push("", pad(10) + txt); break;
+        case "transition": L.push("", pad(Math.max(0, 60 - txt.length)) + txt); break;
+        case "centered": L.push("", pad(Math.max(0, Math.floor((60 - txt.length) / 2))) + txt); break;
+        case "pagebreak": L.push("", ""); break;
+      }
+    });
+    return L.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  }
+
+  function titleHTML(title) {
+    if (!title) return "";
+    function v(k) { return title[k] ? title[k].join("<br>") : ""; }
+    var parts = ['<div class="titlepage">'];
+    parts.push('<div class="tp-main">');
+    if (v("title")) parts.push('<div class="tp-title">' + inline(v("title")) + "</div>");
+    if (v("credit")) parts.push('<div class="tp-credit">' + inline(v("credit")) + "</div>");
+    if (v("author") || v("authors")) parts.push('<div class="tp-author">' + inline(v("author") || v("authors")) + "</div>");
+    if (v("source")) parts.push('<div class="tp-source">' + inline(v("source")) + "</div>");
+    parts.push("</div>");
+    parts.push('<div class="tp-foot">');
+    if (v("draft date") || v("date")) parts.push("<div>" + inline(v("draft date") || v("date")) + "</div>");
+    if (v("contact")) parts.push("<div>" + inline(v("contact")) + "</div>");
+    if (v("copyright")) parts.push("<div>" + inline(v("copyright")) + "</div>");
+    parts.push("</div></div><div class='pagebreak'></div>");
+    return parts.join("");
+  }
+
+  function stats(parsed) {
+    var c = {};
+    parsed.tokens.forEach(function (t) { c[t.type] = (c[t.type] || 0) + 1; });
+    var guessed = parsed.tokens.filter(function (t) { return t.guessed; }).length;
+    return { counts: c, guessed: guessed };
+  }
+
+  var api = { parseFountain: parseFountain, renderHTML: renderHTML, titleHTML: titleHTML, stats: stats, isAllCaps: isAllCaps, toFDX: toFDX, toPlainText: toPlainText };
+
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.FountainCore = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script id="expand">
+/* expand-core.js — project-specific autotype expansion engine.
+   Context-aware (never fires inside dialogue), Unicode-aware, supports multi-word
+   location keys (e.g. "f's stue"), and normalizes curly apostrophes. No DOM. */
+(function (root) {
+  "use strict";
+
+  var PREFIX = "INT\\.?\\/EXT\\.?|EXT\\.?\\/INT\\.?|INT|EXT|EST|I\\/E|E\\/I";
+  var SLUG_RE = new RegExp("^\\s*(\\d+[A-Za-z]?[.\\)]?\\s*)?(" + PREFIX + ")\\b", "i");
+  var LOC_RE = new RegExp("^(\\s*(?:\\d+[A-Za-z]?[.\\)]?\\s*)?(?:" + PREFIX + ")\\.?\\s+)([\\s\\S]*)$", "i");
+
+  function normKey(s) { return String(s).replace(/[’‘`´]/g, "'").toLowerCase(); }
+
+  function parseRules(text) {
+    var map = {};
+    String(text || "").split("\n").forEach(function (line) {
+      if (/^\s*#/.test(line) || !line.trim()) return;
+      var m = line.match(/^\s*(.+?)\s*[=:>]+\s*(.+?)\s*$/);
+      if (m) map[normKey(m[1].trim())] = m[2].trim();
+    });
+    return map;
+  }
+  function compileRules(sets) {
+    sets = sets || {};
+    return {
+      characters: parseRules(sets.characters), prefixes: parseRules(sets.prefixes),
+      times: parseRules(sets.times), locations: parseRules(sets.locations), any: parseRules(sets.any)
+    };
+  }
+
+  function lineIsSlug(s) { return SLUG_RE.test(s); }
+  function isCueText(s) {
+    s = s.replace(/\(.*?\)\s*$/, "").trim();
+    return s.length > 0 && s.length <= 38 && /\p{Lu}/u.test(s) && !/\p{Ll}/u.test(s);
+  }
+  function prevLineBlank(v, lineStart) {
+    if (lineStart === 0) return true;
+    var prevStart = v.lastIndexOf("\n", lineStart - 2) + 1;
+    return v.slice(prevStart, lineStart - 1).trim() === "";
+  }
+  function blockFirstStart(v, lineStart) {
+    var s = lineStart;
+    while (s > 0) {
+      var prevStart = v.lastIndexOf("\n", s - 2) + 1;
+      if (v.slice(prevStart, s - 1).trim() === "") break;
+      s = prevStart;
+    }
+    return s;
+  }
+  function inDialogue(v, lineStart) {
+    var fs = blockFirstStart(v, lineStart);
+    if (fs === lineStart) return false;
+    var firstEnd = v.indexOf("\n", fs); if (firstEnd === -1) firstEnd = v.length;
+    return isCueText(v.slice(fs, firstEnd));
+  }
+  // Match the whole location phrase between the slug prefix and `text`'s end.
+  function matchLocation(text, base, locations) {
+    var mm = text.match(LOC_RE);
+    if (!mm) return null;
+    var loc = mm[2];
+    var trimmed = loc.trim();
+    if (!trimmed) return null;
+    var key = normKey(trimmed);
+    if (!locations[key]) return null;
+    var lead = loc.length - loc.replace(/^\s+/, "").length;
+    var start = base + mm[1].length + lead;
+    return { start: start, end: start + trimmed.length, repl: locations[key] };
+  }
+  function out(v, start, end, repl, pos) {
+    return { value: v.slice(0, start) + repl + v.slice(end), caret: pos + (repl.length - (end - start)) };
+  }
+
+  function compute(v, pos, trigger, rules) {
+    if (trigger === "space") return onSpace(v, pos, rules);
+    if (trigger === "enter") return onEnter(v, pos, rules);
+    if (trigger === "dash") return onDash(v, pos, rules);
+    return null;
+  }
+
+  // Space: characters (cue), scene prefixes (line start), time word (in slug), any.
+  // Locations are NOT expanded on a mid-phrase space (avoids premature expansion).
+  function onSpace(v, pos, rules) {
+    var spaceIdx = pos - 1;
+    if (v.charAt(spaceIdx) !== " ") return null;
+    var lineStart = v.lastIndexOf("\n", spaceIdx - 1) + 1;
+    var pre = v.slice(lineStart, spaceIdx);
+    var m = pre.match(/(\S+)$/); if (!m) return null;
+    var word = m[1], wordStart = spaceIdx - word.length;
+    var before = v.slice(lineStart, wordStart);
+    var atStart = /^\s*(\d+[A-Za-z]?[.\)]?\s*)?$/.test(before);
+    var dial = inDialogue(v, lineStart);
+    var key = normKey(word);
+
+    if (atStart && !dial && prevLineBlank(v, lineStart) && pre.trim() === word && rules.characters[key])
+      return out(v, wordStart, spaceIdx, rules.characters[key], pos);
+    if (!dial && atStart && rules.prefixes[key])
+      return out(v, wordStart, spaceIdx, rules.prefixes[key], pos);
+    if (lineIsSlug(pre) && rules.times[key])
+      return out(v, wordStart, spaceIdx, rules.times[key], pos);
+    if (!dial && rules.any[key])
+      return out(v, wordStart, spaceIdx, rules.any[key], pos);
+    return null;
+  }
+
+  // Dash: a slug separator (" - ") — expand the completed location phrase.
+  function onDash(v, pos, rules) {
+    var dashIdx = pos - 1;
+    if (v.charAt(dashIdx) !== "-") return null;
+    var lineStart = v.lastIndexOf("\n", dashIdx - 1) + 1;
+    var pre = v.slice(lineStart, dashIdx);
+    if (!lineIsSlug(pre)) return null;
+    var loc = matchLocation(pre, lineStart, rules.locations);
+    if (!loc) return null;
+    return out(v, loc.start, loc.end, loc.repl, pos);
+  }
+
+  // Enter: time word or completed location at end of a slug line; else a character cue.
+  function onEnter(v, pos, rules) {
+    var nl = pos - 1;
+    if (v.charAt(nl) !== "\n") return null;
+    var prevStart = v.lastIndexOf("\n", nl - 1) + 1;
+    var lineText = v.slice(prevStart, nl);
+    if (!lineText.trim()) return null;
+
+    if (lineIsSlug(lineText)) {
+      var m = lineText.match(/(\S+)\s*$/);
+      if (m) {
+        var tkey = normKey(m[1]);
+        if (rules.times[tkey]) {
+          var ws = prevStart + m.index;
+          return out(v, ws, ws + m[1].length, rules.times[tkey], pos);
+        }
+      }
+      var loc = matchLocation(lineText, prevStart, rules.locations);
+      if (loc) return out(v, loc.start, loc.end, loc.repl, pos);
+    } else if (prevLineBlank(v, prevStart)) {
+      var trimmed = lineText.trim(), ck = normKey(trimmed);
+      if (rules.characters[ck]) {
+        var lead = lineText.length - lineText.replace(/^\s+/, "").length;
+        return out(v, prevStart + lead, prevStart + lineText.replace(/\s+$/, "").length, rules.characters[ck], pos);
+      }
+    }
+    return null;
+  }
+
+  // ---- Tidy: one-shot pass over a whole script (for pasted text) ----
+  var SLUG_PARSE = new RegExp("^(\\s*)((?:\\d+[A-Za-z]?[.\\)]?\\s*)?)(" + PREFIX + ")(\\.?)(\\s+)([\\s\\S]*)$", "i");
+  function tidySlug(line, rules) {
+    var m = line.match(SLUG_PARSE);
+    if (!m) return line.toUpperCase();
+    var lead = m[1], num = m[2], p3 = m[3], dot = m[4], rest = m[6];
+    var prefixOut = rules.prefixes[normKey(p3 + dot)] ||
+      (p3.toUpperCase() + (dot ? "." : (/^(INT|EXT|EST)$/i.test(p3) ? "." : "")));
+    var loc = rest, time = null;
+    var sp = rest.match(/^([\s\S]*)\s+[-–—]\s+([\s\S]*)$/);   // split on the last separator
+    if (sp) { loc = sp[1]; time = sp[2]; }
+    var locOut = rules.locations[normKey(loc.trim())] || loc.trim().toUpperCase();
+    var res = lead + num.toUpperCase() + prefixOut + " " + locOut;
+    if (time !== null) {
+      var timeOut = rules.times[normKey(time.trim())] || time.trim().toUpperCase();
+      res += " - " + timeOut;
+    }
+    return res;
+  }
+  function tidy(text, rules) {
+    rules = rules || { characters: {}, prefixes: {}, times: {}, locations: {}, any: {} };
+    var lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].replace(/\s+$/, ""), t = line.trim();
+      if (t === "") { out.push(""); continue; }
+      var prevBlank = out.length === 0 || out[out.length - 1].trim() === "";
+      if (prevBlank) {
+        var pm = line.match(/^(\s*(?:\d+[A-Za-z]?[.\)]?\s*)?)(\S+)(\s+[\s\S]*)$/);
+        if (pm && rules.prefixes[normKey(pm[2])]) line = pm[1] + rules.prefixes[normKey(pm[2])] + pm[3];
+        if (lineIsSlug(line)) { out.push(tidySlug(line, rules)); continue; }
+        var nextNonBlank = (i + 1 < lines.length) && lines[i + 1].trim() !== "";
+        if (nextNonBlank && rules.characters[normKey(t)]) { out.push(line.replace(t, rules.characters[normKey(t)])); continue; }
+      }
+      out.push(line);
+    }
+    return out.join("\n").replace(/\n{3,}/g, "\n\n");
+  }
+
+  var api = { parseRules: parseRules, compileRules: compileRules, compute: compute, lineIsSlug: lineIsSlug, tidy: tidy };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.ExpandCore = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script id="sync">
+/* sync-core.js — pure, testable sync logic for cross-device state.
+   Per-project last-write-wins merge with tombstone deletes, plus PKCE helpers
+   for Dropbox OAuth. No DOM, no network. */
+(function (root) {
+  "use strict";
+
+  function emptyState() {
+    return { activeId: null, defaultLang: "da", sceneNumbers: false, projects: {}, tombstones: {}, updatedAt: 0 };
+  }
+
+  // Merge two whole-app states. Each project carries updatedAt; tombstones[id]=deletedAt.
+  function mergeStates(a, b) {
+    a = a || emptyState(); b = b || emptyState();
+    var tomb = {};
+    [a.tombstones || {}, b.tombstones || {}].forEach(function (tm) {
+      Object.keys(tm).forEach(function (id) { tomb[id] = Math.max(tomb[id] || 0, tm[id] || 0); });
+    });
+    var ids = {};
+    Object.keys(a.projects || {}).forEach(function (id) { ids[id] = 1; });
+    Object.keys(b.projects || {}).forEach(function (id) { ids[id] = 1; });
+    var projects = {};
+    Object.keys(ids).forEach(function (id) {
+      var pa = a.projects && a.projects[id], pb = b.projects && b.projects[id];
+      var p = !pa ? pb : !pb ? pa : ((pa.updatedAt || 0) >= (pb.updatedAt || 0) ? pa : pb);
+      var del = tomb[id] || 0;
+      if (del && del >= (p.updatedAt || 0)) return;   // deleted more recently than last edit
+      projects[id] = p;
+    });
+    var newer = (a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b;
+    var activeId = projects[newer.activeId] ? newer.activeId : Object.keys(projects)[0] || null;
+    return {
+      activeId: activeId,
+      defaultLang: newer.defaultLang || "da",
+      sceneNumbers: !!newer.sceneNumbers,
+      projects: projects,
+      tombstones: tomb,
+      updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0)
+    };
+  }
+
+  // ---- PKCE / OAuth helpers ----
+  function _crypto() { return (typeof crypto !== "undefined" && crypto) || (root && root.crypto) || globalThis.crypto; }
+  function b64url(bytes) {
+    var bin = "";
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    var b64 = (typeof btoa !== "undefined") ? btoa(bin)
+      : (typeof Buffer !== "undefined" ? Buffer.from(bytes).toString("base64") : "");
+    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function randomVerifier() {
+    var arr = new Uint8Array(64);
+    _crypto().getRandomValues(arr);
+    return b64url(arr);
+  }
+  function pkceChallenge(verifier) {
+    var data = new TextEncoder().encode(verifier);
+    return _crypto().subtle.digest("SHA-256", data).then(function (buf) {
+      return b64url(new Uint8Array(buf));
+    });
+  }
+
+  var api = { emptyState: emptyState, mergeStates: mergeStates, b64url: b64url, randomVerifier: randomVerifier, pkceChallenge: pkceChallenge };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.SyncCore = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+
+<script id="ui">
+(function(){
+  "use strict";
+  var FC = window.FountainCore, EC = window.ExpandCore, SC = window.SyncCore;
+  var $ = function(id){ return document.getElementById(id); };
+  var ta = $("src"), page = $("page"), pagesWrap = $("pages");
+  var autoChk = $("autodetect"), typeChk = $("autotype"), sceneChk = $("sceneNum"), status = $("status");
+  var sel = $("projectSel"), overlay = $("overlay"), helpOverlay = $("helpOverlay");
+  var STATE_KEY = "sp-state-v2";
+
+  // Built-in shortcuts shared by every project. Prefixes are language-neutral; times are localized.
+  var BUILTINS = {
+    prefixes: { "i.":"INT.", "e.":"EXT.", "i/e":"INT./EXT.", "e/i":"EXT./INT." },
+    times: {
+      en: { "d.":"DAY", "n.":"NIGHT", "mo.":"MORNING", "ev.":"EVENING", "af.":"AFTERNOON", "co.":"CONTINUOUS", "la.":"LATER", "dn.":"DAWN", "du.":"DUSK" },
+      da: { "d.":"DAG", "n.":"NAT", "mo.":"MORGEN", "ev.":"AFTEN", "af.":"EFTERMIDDAG", "co.":"KONTINUERLIG", "la.":"SENERE", "dn.":"DAGGRY", "du.":"SKUMRING" }
+    }
+  };
+  var LANGS = { da:"Danish", en:"English" };
+
+  var SAMPLE =
+"Title: Den Sidste Færge\nCredit: skrevet af\nAuthor: Gabe\nDraft date: 15.06.2026\n\n" +
+"1. EXT. HAVNEN - NAT\n\nRegnen pisker ned. SØREN (40) løber langs kajen med en kuffert.\n\n" +
+"SØREN\nVent! Vent på mig!\n\nEn amerikansk turist, JOHN, kigger forvirret op.\n\n" +
+"JOHN\n(confused)\nSorry — I don't speak Danish.\n\n" +
+"SØREN\nThe ferry. Is it gone?\n\nJOHN\nYeah, man. Just missed it.\n\n" +
+"Søren sætter sig på kufferten. Stilhed.\n\nCUT TO:\n\n2. INT. VENTESALEN - NAT\n\nEt koldt, tomt rum.\n";
+
+  function defaultShortcuts(){
+    return {
+      characters:"# e.g.  fr = FREJA",
+      prefixes:"# i. and e. are built in — add more here",
+      times:"# d. and n. are built in (localized) — add more here",
+      locations:"# e.g.  kø = KØKKENET"
+    };
+  }
+
+  // ---------- state ----------
+  var state = (function(){
+    try{ var s = JSON.parse(localStorage.getItem(STATE_KEY)); if(s && s.projects && s.projects[s.activeId]) return migrate(s); }catch(e){}
+    var old=""; try{ old = localStorage.getItem("screenplay-draft-v1") || ""; }catch(e){}
+    var id = "p" + Date.now();
+    var now = Date.now();
+    var st = { activeId:id, defaultLang:"da", sceneNumbers:false, projects:{}, tombstones:{}, updatedAt:now };
+    st.projects[id] = { name:"Untitled", text: old || SAMPLE, lang:"da", shortcuts: defaultShortcuts(), updatedAt:now };
+    return st;
+  })();
+  function migrate(s){
+    if(!s.defaultLang) s.defaultLang = "da";
+    if(typeof s.sceneNumbers !== "boolean") s.sceneNumbers = false;
+    if(!s.tombstones) s.tombstones = {};
+    if(typeof s.updatedAt !== "number") s.updatedAt = Date.now();
+    Object.keys(s.projects).forEach(function(id){
+      var p = s.projects[id];
+      if(!p.lang) p.lang = s.defaultLang;
+      if(!p.shortcuts) p.shortcuts = defaultShortcuts();
+      if(typeof p.updatedAt !== "number") p.updatedAt = Date.now();
+    });
+    return s;
+  }
+  function touch(){ var n = Date.now(); if(active()) active().updatedAt = n; state.updatedAt = n; }
+  function active(){ return state.projects[state.activeId]; }
+  function saveState(){ try{ localStorage.setItem(STATE_KEY, JSON.stringify(state)); }catch(e){} }
+
+  // ---------- rules (built-ins + project) ----------
+  var rules;
+  function buildRules(){
+    var p = active(), lang = p.lang || state.defaultLang || "en", P = EC.parseRules;
+    rules = {
+      characters: P(p.shortcuts.characters),
+      prefixes: Object.assign({}, BUILTINS.prefixes, P(p.shortcuts.prefixes)),
+      times: Object.assign({}, BUILTINS.times[lang] || {}, P(p.shortcuts.times)),
+      locations: P(p.shortcuts.locations),
+      any: P(p.shortcuts.any || "")
+    };
+  }
+  function renderBuiltins(){
+    var lang = active().lang || state.defaultLang, t = BUILTINS.times[lang] || {};
+    var lines = ["Scene prefixes:  i. → INT.   e. → EXT.   i/e → INT./EXT."];
+    var ts = Object.keys(t).map(function(k){ return k + " → " + t[k]; }).join("   ");
+    lines.push("Time (" + (LANGS[lang]||lang) + "):  " + ts);
+    $("builtinsView").textContent = lines.join("\n");
+  }
+
+  // ---------- render ----------
+  function render(){
+    var parsed = FC.parseFountain(ta.value, { autodetect: autoChk.checked });
+    page.innerHTML = FC.titleHTML(parsed.title) + FC.renderHTML(parsed, { sceneNumbers: sceneChk.checked }) ||
+      '<div class="empty">Start typing or paste your script…</div>';
+    var s = FC.stats(parsed);
+    status.textContent = s.guessed ? (s.guessed + " auto-detected cue" + (s.guessed>1?"s":"") + " (amber)") : "Parsed cleanly";
+    status.className = s.guessed ? "status warn" : "status";
+    fit();
+  }
+  function fit(){
+    pagesWrap.style.zoom = "1";
+    var scroll = document.querySelector(".preview-scroll");
+    if(!scroll) return;
+    pagesWrap.style.zoom = Math.min(1, (scroll.clientWidth - 24) / (8.5 * 96));
+  }
+
+  var saveTimer;
+  function onInput(){
+    active().text = ta.value;
+    touch();
+    render();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveState, 350);
+    syncSoon();
+  }
+
+  // ---------- live expansion ----------
+  ta.addEventListener("input", function(e){
+    if(typeChk.checked){
+      var trig = null;
+      if(e.inputType === "insertText" && e.data === " ") trig = "space";
+      else if(e.inputType === "insertText" && e.data === "-") trig = "dash";
+      else if(e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") trig = "enter";
+      if(trig){
+        var res = EC.compute(ta.value, ta.selectionStart, trig, rules);
+        if(res){ ta.value = res.value; ta.selectionStart = ta.selectionEnd = res.caret; }
+      }
+    }
+    onInput();
+  });
+
+  // ---------- projects ----------
+  function refreshSel(){
+    sel.innerHTML = "";
+    Object.keys(state.projects).forEach(function(id){
+      var o = document.createElement("option");
+      o.value = id; o.textContent = state.projects[id].name || "Untitled";
+      if(id === state.activeId) o.selected = true;
+      sel.appendChild(o);
+    });
+    var n = document.createElement("option");
+    n.value = "__new__"; n.textContent = "＋ New project…";
+    sel.appendChild(n);
+  }
+  function createProject(name){
+    var id = "p" + Date.now() + Math.random().toString(36).slice(2, 7);
+    state.projects[id] = { name: name || "Untitled", text:"", lang: state.defaultLang, shortcuts: defaultShortcuts(), updatedAt: Date.now() };
+    state.activeId = id; state.updatedAt = Date.now(); saveState(); refreshSel(); loadActive(); syncSoon();
+  }
+  function syncLangToggle(){
+    var lang = active().lang || state.defaultLang;
+    [].forEach.call($("langToggle").querySelectorAll("button"), function(b){
+      b.classList.toggle("on", b.dataset.lang === lang);
+    });
+  }
+  function loadActive(){
+    ta.value = active().text;
+    buildRules();
+    ["characters","prefixes","times","locations"].forEach(function(k){ $("sc-"+k).value = active().shortcuts[k] || ""; });
+    $("projName").value = active().name || "";
+    syncLangToggle(); renderBuiltins(); render();
+  }
+  function promptNewProject(){
+    var name = prompt("Name your new project:", "Untitled");
+    if(name === null){ refreshSel(); return; }            // cancelled — restore selection
+    createProject(name.trim() || "Untitled");
+    overlay.classList.add("open");                          // open rules editor right away
+  }
+  sel.addEventListener("change", function(){
+    if(sel.value === "__new__"){ promptNewProject(); return; }
+    state.activeId = sel.value; saveState(); loadActive();
+  });
+  $("newProjTop").addEventListener("click", promptNewProject);
+  $("newProj").addEventListener("click", function(){ createProject("Untitled"); });
+  $("delProj").addEventListener("click", function(){
+    if(Object.keys(state.projects).length <= 1){ alert("You need at least one project."); return; }
+    if(!confirm("Delete project “" + (active().name||"Untitled") + "”?")) return;
+    var gone = state.activeId;
+    delete state.projects[gone];
+    state.tombstones[gone] = Date.now();          // so the delete propagates across devices
+    state.activeId = Object.keys(state.projects)[0];
+    state.updatedAt = Date.now();
+    saveState(); refreshSel(); loadActive(); syncSoon();
+  });
+  $("projName").addEventListener("input", function(){ active().name = $("projName").value; touch(); refreshSel(); saveState(); syncSoon(); });
+  ["characters","prefixes","times","locations"].forEach(function(k){
+    $("sc-"+k).addEventListener("input", function(){ active().shortcuts[k] = $("sc-"+k).value; touch(); buildRules(); saveState(); syncSoon(); });
+  });
+
+  // ---------- import / export shortcuts ----------
+  var GROUPS = ["characters","prefixes","times","locations"];
+  function parseShortcutSections(text){
+    var groups = {}, cur = null;
+    text.replace(/\r\n?/g,"\n").split("\n").forEach(function(ln){
+      var h = ln.match(/^\s*\[(characters|prefixes|times|locations)\]\s*$/i);
+      if(h){ cur = h[1].toLowerCase(); groups[cur] = groups[cur] || []; return; }
+      var g = cur || "locations";                 // lines before any header -> locations
+      (groups[g] = groups[g] || []).push(ln);
+    });
+    Object.keys(groups).forEach(function(g){ groups[g] = groups[g].join("\n").replace(/^\n+|\n+$/g,""); });
+    return groups;
+  }
+  function applyImport(text){
+    var secs = parseShortcutSections(text);
+    var keys = Object.keys(secs).filter(function(g){ return GROUPS.indexOf(g) >= 0; });
+    if(!keys.length){ $("importStatus").textContent = "No shortcuts found."; return; }
+    var filled = keys.filter(function(g){ return (active().shortcuts[g]||"").replace(/^\s*#.*$/mg,"").trim(); });
+    if(filled.length && !confirm("Replace these groups in “"+(active().name||"project")+"”: "+keys.join(", ")+"?")) return;
+    keys.forEach(function(g){ active().shortcuts[g] = secs[g]; if($("sc-"+g)) $("sc-"+g).value = secs[g]; });
+    touch(); buildRules(); saveState(); renderBuiltins(); syncSoon();
+    $("importStatus").textContent = "Imported: " + keys.join(", ");
+  }
+  $("importShortcuts").addEventListener("click", function(){ $("shortcutsFile").click(); });
+  $("shortcutsFile").addEventListener("change", function(e){
+    var f = e.target.files && e.target.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(){ applyImport(String(r.result)); };
+    r.readAsText(f, "UTF-8"); e.target.value = "";
+  });
+  $("exportShortcuts").addEventListener("click", function(){
+    var s = active().shortcuts;
+    var t = GROUPS.map(function(g){ return "[" + g + "]\n" + (s[g] || ""); }).join("\n\n") + "\n";
+    download(baseName() + "-shortcuts.txt", t);
+  });
+  // paste-to-import (no file picker)
+  $("pasteShortcuts").addEventListener("click", function(){
+    var p = $("pastePanel");
+    p.style.display = (p.style.display === "none" ? "block" : "none");
+    if(p.style.display === "block") $("pasteBox").focus();
+  });
+  $("pasteCancel").addEventListener("click", function(){ $("pasteBox").value = ""; $("pastePanel").style.display = "none"; });
+  $("pasteLoad").addEventListener("click", function(){
+    var t = $("pasteBox").value;
+    if(!t.trim()){ $("importStatus").textContent = "Nothing to load."; return; }
+    applyImport(t);
+    $("pasteBox").value = ""; $("pastePanel").style.display = "none";
+  });
+
+  // ---------- language ----------
+  $("langToggle").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    active().lang = b.dataset.lang; state.defaultLang = b.dataset.lang;
+    touch(); buildRules(); syncLangToggle(); renderBuiltins(); saveState(); syncSoon();
+  });
+
+  // ---------- scene numbers ----------
+  sceneChk.checked = state.sceneNumbers;
+  sceneChk.addEventListener("change", function(){ state.sceneNumbers = sceneChk.checked; state.updatedAt = Date.now(); saveState(); render(); syncSoon(); });
+
+  // ---------- modals ----------
+  $("settingsBtn").addEventListener("click", function(){ overlay.classList.add("open"); });
+  $("closeModal").addEventListener("click", function(){ overlay.classList.remove("open"); });
+  overlay.addEventListener("click", function(e){ if(e.target === overlay) overlay.classList.remove("open"); });
+  $("guideBtn").addEventListener("click", function(){ helpOverlay.classList.add("open"); });
+  $("closeHelp").addEventListener("click", function(){ helpOverlay.classList.remove("open"); });
+  helpOverlay.addEventListener("click", function(e){ if(e.target === helpOverlay) helpOverlay.classList.remove("open"); });
+
+  // ---------- files & export ----------
+  function download(name, content, mime){
+    var blob = new Blob([content], { type:(mime||"text/plain")+";charset=utf-8" });
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  function baseName(){ return (active().name || "script").replace(/[^\p{L}\p{N}]+/gu,"_").slice(0,60) || "script"; }
+  function parsedNow(){ return FC.parseFountain(ta.value, { autodetect: autoChk.checked }); }
+
+  $("file").addEventListener("change", function(e){
+    var f = e.target.files && e.target.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(){ ta.value = r.result; onInput(); document.body.dataset.view="preview"; syncView(); };
+    r.readAsText(f, "UTF-8"); e.target.value = "";
+  });
+  var exportMenu = $("exportMenu");
+  $("exportBtn").addEventListener("click", function(e){ e.stopPropagation(); exportMenu.classList.toggle("open"); });
+  document.addEventListener("click", function(){ exportMenu.classList.remove("open"); });
+  $("expFountain").addEventListener("click", function(){ download(baseName()+".fountain", ta.value); });
+  $("expFdx").addEventListener("click", function(){ download(baseName()+".fdx", FC.toFDX(parsedNow()), "application/xml"); });
+  $("expTxt").addEventListener("click", function(){ download(baseName()+".txt", FC.toPlainText(parsedNow())); });
+
+  $("sampleBtn").addEventListener("click", function(){
+    if(ta.value.trim() && !confirm("Replace this project's text with the sample script?")) return;
+    ta.value = SAMPLE; onInput();
+  });
+  $("tidyBtn").addEventListener("click", function(){
+    var before = ta.value, after = EC.tidy(before, rules);
+    if(after === before){ status.textContent = "Already tidy"; status.className = "status"; return; }
+    if(!confirm("Tidy expands your shortcuts and standardises every slugline in this script. Continue?")) return;
+    ta.value = after; onInput(); status.textContent = "Tidied ✓"; status.className = "status";
+  });
+  $("printBtn").addEventListener("click", function(){
+    document.body.dataset.view = "preview"; syncView(); render();
+    setTimeout(function(){ window.print(); }, 60);
+  });
+
+  // ---------- view toggle ----------
+  var toggle = $("viewToggle");
+  function syncView(){
+    [].forEach.call(toggle.querySelectorAll("button"), function(b){
+      b.classList.toggle("on", b.dataset.view === document.body.dataset.view);
+    });
+  }
+  toggle.addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    document.body.dataset.view = b.dataset.view; syncView();
+    if(b.dataset.view === "preview") fit();
+  });
+
+  autoChk.addEventListener("change", render);
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", function(){ setTimeout(fit, 200); });
+
+  // ---------- Dropbox sync ----------
+  var DBX_KEY = "sp-dropbox";
+  var dbx = (function(){ try{ return JSON.parse(localStorage.getItem(DBX_KEY)) || {}; }catch(e){ return {}; } })();
+  function saveDbx(){ try{ localStorage.setItem(DBX_KEY, JSON.stringify(dbx)); }catch(e){} }
+  function setDbxStatus(t){ var el = $("dbxStatus"); if(el) el.textContent = t; }
+  function redirectUri(){ return location.origin + location.pathname; }
+  function form(obj){ return Object.keys(obj).map(function(k){ return encodeURIComponent(k)+"="+encodeURIComponent(obj[k]); }).join("&"); }
+  function checkJson(r){ return r.text().then(function(t){ if(!r.ok) throw new Error(r.status+" "+t.slice(0,160)); return t ? JSON.parse(t) : {}; }); }
+  function applyToken(tok){
+    if(tok.access_token){ dbx.accessToken = tok.access_token; dbx.expiresAt = Date.now() + ((tok.expires_in||14400)*1000) - 60000; }
+    if(tok.refresh_token) dbx.refreshToken = tok.refresh_token;
+  }
+  function dbxTokenReq(body){
+    return fetch("https://api.dropboxapi.com/oauth2/token", {
+      method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body: form(body)
+    }).then(checkJson);
+  }
+  function dbxAccess(){
+    if(dbx.accessToken && dbx.expiresAt && Date.now() < dbx.expiresAt) return Promise.resolve(dbx.accessToken);
+    if(!dbx.refreshToken) return Promise.reject(new Error("not connected"));
+    return dbxTokenReq({ grant_type:"refresh_token", refresh_token:dbx.refreshToken, client_id:dbx.appKey })
+      .then(function(tok){ applyToken(tok); saveDbx(); return dbx.accessToken; });
+  }
+  function dbxDownload(){
+    return dbxAccess().then(function(at){
+      return fetch("https://content.dropboxapi.com/2/files/download", {
+        method:"POST", headers:{ "Authorization":"Bearer "+at, "Dropbox-API-Arg": JSON.stringify({ path:"/screenplay-sync.json" }) }
+      });
+    }).then(function(r){
+      if(r.status === 409) return null;                 // file not created yet
+      if(!r.ok) return r.text().then(function(t){ throw new Error("download "+r.status+" "+t.slice(0,160)); });
+      return r.text().then(function(t){ return JSON.parse(t); });
+    });
+  }
+  function dbxUpload(obj){
+    return dbxAccess().then(function(at){
+      return fetch("https://content.dropboxapi.com/2/files/upload", {
+        method:"POST",
+        headers:{ "Authorization":"Bearer "+at, "Content-Type":"application/octet-stream",
+          "Dropbox-API-Arg": JSON.stringify({ path:"/screenplay-sync.json", mode:"overwrite", mute:true }) },
+        body: JSON.stringify(obj)
+      });
+    }).then(function(r){ if(!r.ok) return r.text().then(function(t){ throw new Error("upload "+r.status+" "+t.slice(0,160)); }); });
+  }
+  function ensureStateShape(){
+    if(!state.projects) state.projects = {};
+    if(!state.tombstones) state.tombstones = {};
+    if(typeof state.updatedAt !== "number") state.updatedAt = 0;
+    if(!Object.keys(state.projects).length){
+      var id = "p"+Date.now()+Math.random().toString(36).slice(2,7);
+      state.projects[id] = { name:"Untitled", text:"", lang: state.defaultLang||"da", shortcuts: defaultShortcuts(), updatedAt: Date.now() };
+      state.activeId = id;
+    }
+    if(!state.projects[state.activeId]) state.activeId = Object.keys(state.projects)[0];
+    Object.keys(state.projects).forEach(function(id){
+      var p = state.projects[id];
+      if(!p.shortcuts) p.shortcuts = defaultShortcuts();
+      if(!p.lang) p.lang = state.defaultLang||"da";
+      if(typeof p.updatedAt !== "number") p.updatedAt = Date.now();
+    });
+  }
+  var syncing = false, syncTimer = null;
+  function syncSoon(){ if(!dbx.refreshToken) return; clearTimeout(syncTimer); syncTimer = setTimeout(function(){ dbxSyncNow(false); }, 2500); }
+  function dbxSyncNow(reloadAfter){
+    if(!dbx.refreshToken && !dbx.accessToken) return Promise.resolve();
+    if(syncing) return Promise.resolve();
+    syncing = true; setDbxStatus("Syncing…");
+    return dbxDownload().then(function(remote){
+      state = SC.mergeStates(state, remote);
+      ensureStateShape(); saveState();
+      return dbxUpload(state);
+    }).then(function(){
+      dbx.lastSync = Date.now(); saveDbx();
+      setDbxStatus("Synced ✓ " + new Date(dbx.lastSync).toLocaleTimeString());
+      if(reloadAfter){ refreshSel(); loadActive(); }
+    }).catch(function(e){ setDbxStatus("Sync error: " + e.message); })
+      .then(function(){ syncing = false; });
+  }
+  function dbxConnect(){
+    var key = ($("dbxKey").value || "").trim() || dbx.appKey;
+    if(!key){ setDbxStatus("Enter your Dropbox app key first."); return; }
+    dbx.appKey = key; saveDbx();
+    var verifier = SC.randomVerifier();
+    SC.pkceChallenge(verifier).then(function(challenge){
+      try{ sessionStorage.setItem("dbx_verifier", verifier); sessionStorage.setItem("dbx_redirect", redirectUri()); }catch(e){}
+      location.href = "https://www.dropbox.com/oauth2/authorize"
+        + "?client_id=" + encodeURIComponent(key)
+        + "&response_type=code&token_access_type=offline"
+        + "&code_challenge=" + challenge + "&code_challenge_method=S256"
+        + "&scope=" + encodeURIComponent("files.content.read files.content.write account_info.read")
+        + "&redirect_uri=" + encodeURIComponent(redirectUri());
+    });
+  }
+  function dbxHandleRedirect(){
+    var m = (location.search || "").match(/[?&]code=([^&]+)/);
+    if(!m) return Promise.resolve(false);
+    var code = decodeURIComponent(m[1]);
+    var verifier = "", redirect = redirectUri();
+    try{ verifier = sessionStorage.getItem("dbx_verifier") || ""; redirect = sessionStorage.getItem("dbx_redirect") || redirect; }catch(e){}
+    try{ history.replaceState({}, "", redirect); }catch(e){}
+    if(!verifier || !dbx.appKey) return Promise.resolve(false);
+    return dbxTokenReq({ grant_type:"authorization_code", code:code, code_verifier:verifier, client_id:dbx.appKey, redirect_uri:redirect })
+      .then(function(tok){ applyToken(tok); saveDbx(); try{ sessionStorage.removeItem("dbx_verifier"); }catch(e){}
+        return dbxSyncNow(true).then(function(){ return true; }); })
+      .catch(function(e){ setDbxStatus("Connect failed: " + e.message); return false; });
+  }
+  if($("dbxKey") && dbx.appKey) $("dbxKey").value = dbx.appKey;
+  setDbxStatus(dbx.refreshToken ? "Connected." : "Not connected.");
+  $("dbxConnect").addEventListener("click", dbxConnect);
+  $("dbxSync").addEventListener("click", function(){ dbxSyncNow(true); });
+  $("dbxDisconnect").addEventListener("click", function(){ dbx = { appKey: dbx.appKey }; saveDbx(); setDbxStatus("Disconnected."); });
+  try{ document.addEventListener("visibilitychange", function(){ if(!document.hidden && dbx.refreshToken) dbxSyncNow(true); }); }catch(e){}
+
+  // ---------- offline (service worker, only when hosted over http/https) ----------
+  try {
+    if (navigator.serviceWorker && (location.protocol === "https:" || location.protocol === "http:"))
+      navigator.serviceWorker.register("sw.js").catch(function(){});
+  } catch (e) {}
+
+  // ---------- init ----------
+  refreshSel(); loadActive(); syncView();
+  try{ dbxHandleRedirect().then(function(did){ if(!did && dbx.refreshToken) dbxSyncNow(true); }); }catch(e){}
+})();
+</script>
+</body>
+</html>
