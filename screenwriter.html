@@ -136,7 +136,7 @@
 </head>
 <body data-view="write">
   <div class="toolbar">
-    <div class="brand">Screenplay <small>· Fountain v2.6</small></div>
+    <div class="brand">Screenplay <small>· Fountain v2.7</small></div>
     <select id="projectSel" title="Switch project"></select>
     <button class="btn icon" id="newProjTop" title="New project">＋</button>
     <div class="seg" id="langToggle" title="Primary language">
@@ -615,7 +615,8 @@
     sets = sets || {};
     return {
       characters: parseRules(sets.characters), prefixes: parseRules(sets.prefixes),
-      times: parseRules(sets.times), locations: parseRules(sets.locations), any: parseRules(sets.any)
+      times: parseRules(sets.times), locations: parseRules(sets.locations), any: parseRules(sets.any),
+      extensions: parseRules(sets.extensions)
     };
   }
 
@@ -644,6 +645,14 @@
     if (m && m[1].trim()) return { name: m[1].trim(), ext: " " + m[2] };
     return { name: s.trim(), ext: "" };
   }
+  // Correct any "(abbrev)" inside a string to its canonical extension, e.g. (vo) -> (V.O.)
+  function fixExtension(s, rules) {
+    if (!rules.extensions) return s;
+    return s.replace(/\(([^()]*)\)/g, function (whole, inner) {
+      var r = rules.extensions[normKey(inner)];
+      return r ? "(" + r + ")" : whole;
+    });
+  }
   function inDialogue(v, lineStart) {
     var fs = blockFirstStart(v, lineStart);
     if (fs === lineStart) return false;
@@ -671,7 +680,20 @@
     if (trigger === "space") return onSpace(v, pos, rules);
     if (trigger === "enter") return onEnter(v, pos, rules);
     if (trigger === "dash") return onDash(v, pos, rules);
+    if (trigger === "closeparen") return onCloseParen(v, pos, rules);
     return null;
+  }
+
+  // Correct a just-closed cue extension, e.g. typing "(vo)" -> "(V.O.)".
+  function onCloseParen(v, pos, rules) {
+    if (!rules.extensions || v.charAt(pos - 1) !== ")") return null;
+    var lineStart = v.lastIndexOf("\n", pos - 2) + 1;
+    var pre = v.slice(lineStart, pos);
+    var m = pre.match(/\(([^()]*)\)$/);
+    if (!m) return null;
+    var r = rules.extensions[normKey(m[1])];
+    if (!r) return null;
+    return out(v, pos - m[0].length, pos, "(" + r + ")", pos);
   }
 
   // Space: characters (cue), scene prefixes (line start), time word (in slug), any.
@@ -695,7 +717,8 @@
       var ckS = normKey(cueS.name);
       // expand only when the whole cue-so-far is the shortcut (optionally with a (V.O.)-style ext)
       if (rules.characters[ckS] && (cueS.name + cueS.ext).replace(/\s+/g, " ").trim() === preT.replace(/\s+/g, " ").trim()) {
-        return out(v, lineStart + leadS, spaceIdx, rules.characters[ckS] + cueS.ext, pos);
+        var repS = rules.characters[ckS] + (cueS.ext ? " " + fixExtension(cueS.ext.trim(), rules) : "");
+        return out(v, lineStart + leadS, spaceIdx, repS, pos);
       }
     }
     if (!dial && atStart && rules.prefixes[key])
@@ -743,7 +766,8 @@
       var ck = normKey(cue.name);
       if (rules.characters[ck]) {
         var lead = lineText.length - lineText.replace(/^\s+/, "").length;
-        return out(v, prevStart + lead, prevStart + lineText.replace(/\s+$/, "").length, rules.characters[ck] + cue.ext, pos);
+        var replText = rules.characters[ck] + (cue.ext ? " " + fixExtension(cue.ext.trim(), rules) : "");
+        return out(v, prevStart + lead, prevStart + lineText.replace(/\s+$/, "").length, replText, pos);
       }
     }
     return null;
@@ -787,7 +811,11 @@
         if (nextNonBlank) {
           var cueT = splitCue(t);
           var ckT = normKey(cueT.name);
-          if (rules.characters[ckT]) { out.push(line.replace(t, rules.characters[ckT] + cueT.ext)); continue; }
+          if (rules.characters[ckT] || (cueT.ext && isCueText(cueT.name))) {
+            var nameOut = rules.characters[ckT] || cueT.name;
+            var extOut = cueT.ext ? " " + fixExtension(cueT.ext.trim(), rules) : "";
+            out.push(line.replace(t, nameOut + extOut)); continue;
+          }
         }
       }
       out.push(line);
@@ -912,6 +940,8 @@
     }
   };
   var LANGS = { da:"Danish", en:"English" };
+  // Character-cue extension shortcuts — global, all projects, all languages. (os)->(O.S.) etc.
+  var EXTENSIONS = { "os":"O.S.", "vo":"V.O.", "pl":"PRE-LAP", "contd":"CONT'D", "cont'd":"CONT'D", "mos":"MOS" };
 
   var SAMPLE =
 "Title: Den Sidste Færge\nCredit: skrevet af\nAuthor: Gabe\nDraft date: 15.06.2026\n\n" +
@@ -966,7 +996,8 @@
       prefixes: Object.assign({}, BUILTINS.prefixes, P(p.shortcuts.prefixes)),
       times: Object.assign({}, BUILTINS.times[lang] || {}, P(p.shortcuts.times)),
       locations: P(p.shortcuts.locations),
-      any: P(p.shortcuts.any || "")
+      any: P(p.shortcuts.any || ""),
+      extensions: Object.assign({}, EXTENSIONS)
     };
   }
   function renderBuiltins(){
@@ -1012,7 +1043,7 @@
     if(typeChk.checked && ta.selectionStart === ta.selectionEnd){
       var pos = ta.selectionStart;
       var ch = ta.value.charAt(pos - 1);
-      var trig = ch === " " ? "space" : (ch === "-" ? "dash" : ((ch === "\n" || ch === "\r") ? "enter" : null));
+      var trig = ch === " " ? "space" : (ch === "-" ? "dash" : (ch === ")" ? "closeparen" : ((ch === "\n" || ch === "\r") ? "enter" : null)));
       if(trig){
         var res = EC.compute(ta.value, pos, trig, rules);
         if(res){ ta.value = res.value; ta.selectionStart = ta.selectionEnd = res.caret; }

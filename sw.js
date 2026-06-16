@@ -3,7 +3,7 @@
      and fall back to the cached copy when offline.
    - Everything else is cache-first for speed/offline.
    Bump CACHE whenever you ship a new version to force a clean refresh. */
-var CACHE = "screenplay-v7";
+var CACHE = "screenplay-v8";
 var ASSETS = ["screenwriter.html", "manifest.webmanifest"];
 
 self.addEventListener("install", function (e) {
