@@ -1,6 +1,9 @@
-/* Service worker — makes the app work fully offline once it has been opened once.
-   Cache-first for the app shell; falls back to the app page for navigations. */
-var CACHE = "screenplay-v1";
+/* Service worker — offline support that still picks up updates.
+   - The app page (HTML) is network-first: you always get the latest when online,
+     and fall back to the cached copy when offline.
+   - Everything else is cache-first for speed/offline.
+   Bump CACHE whenever you ship a new version to force a clean refresh. */
+var CACHE = "screenplay-v2";
 var ASSETS = ["screenwriter.html", "manifest.webmanifest"];
 
 self.addEventListener("install", function (e) {
@@ -18,17 +21,31 @@ self.addEventListener("activate", function (e) {
 });
 
 self.addEventListener("fetch", function (e) {
-  if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then(function (hit) {
-      if (hit) return hit;
-      return fetch(e.request).then(function (resp) {
-        return caches.open(CACHE).then(function (c) {
-          try { c.put(e.request, resp.clone()); } catch (_) {}
-          return resp;
-        });
+  var req = e.request;
+  if (req.method !== "GET") return;
+  var isApp = req.mode === "navigate" || /screenwriter\.html(\?|$)/.test(req.url);
+
+  if (isApp) {
+    // network-first so a freshly uploaded version is picked up when online
+    e.respondWith(
+      fetch(req).then(function (resp) {
+        var copy = resp.clone();
+        caches.open(CACHE).then(function (c) { try { c.put("screenwriter.html", copy); } catch (_) {} });
+        return resp;
       }).catch(function () {
-        if (e.request.mode === "navigate") return caches.match("screenwriter.html");
+        return caches.match("screenwriter.html").then(function (h) { return h || caches.match(req); });
+      })
+    );
+    return;
+  }
+
+  // everything else: cache-first
+  e.respondWith(
+    caches.match(req).then(function (hit) {
+      return hit || fetch(req).then(function (resp) {
+        var copy = resp.clone();
+        caches.open(CACHE).then(function (c) { try { c.put(req, copy); } catch (_) {} });
+        return resp;
       });
     })
   );

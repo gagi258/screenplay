@@ -349,7 +349,7 @@
       }
 
       // Auto transition: ALL CAPS line ending in "TO:" surrounded by blanks
-      if (blankAt(k - 1) && blankAt(k + 1) && isAllCaps(t) && /TO:$/.test(t)) {
+      if (blankAt(k - 1) && blankAt(k + 1) && isAllCaps(t) && /(?:TO|TIL):$/.test(t)) {
         tokens.push({ type: "transition", text: t }); continue;
       }
       if (blankAt(k - 1) && blankAt(k + 1) &&
@@ -949,14 +949,16 @@
   }
 
   // ---------- live expansion ----------
-  ta.addEventListener("input", function(e){
-    if(typeChk.checked){
-      var trig = null;
-      if(e.inputType === "insertText" && e.data === " ") trig = "space";
-      else if(e.inputType === "insertText" && e.data === "-") trig = "dash";
-      else if(e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") trig = "enter";
+  // Detect the trigger from the character actually before the caret. This is robust to
+  // how the keyboard delivers it — Safari/iOS autocorrect & predictive text don't always
+  // report inputType/data, but the character that landed is always there to read.
+  ta.addEventListener("input", function(){
+    if(typeChk.checked && ta.selectionStart === ta.selectionEnd){
+      var pos = ta.selectionStart;
+      var ch = ta.value.charAt(pos - 1);
+      var trig = ch === " " ? "space" : (ch === "-" ? "dash" : ((ch === "\n" || ch === "\r") ? "enter" : null));
       if(trig){
-        var res = EC.compute(ta.value, ta.selectionStart, trig, rules);
+        var res = EC.compute(ta.value, pos, trig, rules);
         if(res){ ta.value = res.value; ta.selectionStart = ta.selectionEnd = res.caret; }
       }
     }
