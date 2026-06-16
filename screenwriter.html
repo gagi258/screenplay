@@ -136,7 +136,7 @@
 </head>
 <body data-view="write">
   <div class="toolbar">
-    <div class="brand">Screenplay <small>· Fountain v2.5</small></div>
+    <div class="brand">Screenplay <small>· Fountain v2.6</small></div>
     <select id="projectSel" title="Switch project"></select>
     <button class="btn icon" id="newProjTop" title="New project">＋</button>
     <div class="seg" id="langToggle" title="Primary language">
@@ -994,10 +994,10 @@
     pagesWrap.style.zoom = Math.min(1, (scroll.clientWidth - 24) / (8.5 * 96));
   }
 
-  var saveTimer;
+  var saveTimer, lastEditAt = 0;
   function onInput(){
     active().text = ta.value;
-    touch();
+    touch(); lastEditAt = Date.now();
     render();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveState, 350);
@@ -1323,6 +1323,15 @@
   $("dbxSync").addEventListener("click", function(){ dbxSyncNow(true); });
   $("dbxDisconnect").addEventListener("click", function(){ dbx = { appKey: dbx.appKey }; saveDbx(); setDbxStatus("Disconnected."); });
   try{ document.addEventListener("visibilitychange", function(){ if(!document.hidden && dbx.refreshToken) dbxSyncNow(true); }); }catch(e){}
+  // gentle background refresh (every 60s) — guarded so it never interrupts typing
+  try{ setInterval(function(){
+    try{
+      if(!dbx.refreshToken || document.hidden || syncing) return;   // only when connected, visible, idle
+      if(Date.now() - lastEditAt < 6000) return;                    // not right after an edit
+      if(document.activeElement === ta) return;                     // not while the cursor is in the editor
+      dbxSyncNow(true);
+    }catch(e){}
+  }, 60000); }catch(e){}
 
   // ---------- offline (service worker, only when hosted over http/https) ----------
   try {
